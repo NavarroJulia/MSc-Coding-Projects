@@ -1,0 +1,398 @@
+---
+title: "Monte Carlo simulation in R"
+author: "Julia N. Navarro"
+date: "October 2022"
+output: html_document
+---
+    
+    
+    
+```{r setup, include=FALSE, comment=NA}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+
+```
+
+GitHub repository: https://github.com/NavarroJulia/MT5673_2_220030294.git
+
+```{r load-packages, include=FALSE, comment=NA}
+library(parallel)
+library(ggplot2)
+library(dplyr)
+```
+
+
+<br>
+
+
+## Problem A: Simulation of the probability that $X>Y$
+
+<!--- Tasks:
+
+Problem A
+• Consider the following independent random variables:
+– X ∼ N (µ = 4, σ2 = 10)
+– Y ∼ U(a = 2, b = 8)
+• Compute the probability that X > Y , i.e. Pr(X > Y ).
+
+--->
+
+Our first task involves the calculation of the probability that $X ∼ N (µ = 4,\;σ^2 = 10)$ is larger than $Y∼ U(a = 2,\:b = 8)$. We begin by generating an empty vector $\hat{P}$ of all zeros in which our values ($0$ or $1$) will be stored in. Next, we create a for loop so that each time a random pair of $X$ and $Y$ are printed. They are subsequently compared and if $X$ is in fact larger than $Y$, a "1" it placed in the $i^{th}$ position in the zero vector. There is no need to worry to what happens when $Y > X$ as the null vector already accomodates this condition by default (a 0 in the position). We can choose the number of loops we would like, and note that increasing this will result in a more accurate probability $P(X>Y)$. After the loop has ended we simply sum up the components in $\hat{P}$ and divide by the number of loops (or random pairs generated). 
+
+
+``` {r, echo = TRUE, comment=NA, results = "hide"}
+
+## Compute the probability that X > Y , i.e. Pr(X > Y):
+
+num_sim = 50000
+
+set.seed(314)
+
+## create a vector of length num_sim of all zeros:
+P_hat <- rep(0, num_sim) 
+
+for(i in 1:num_sim){
+
+X <- rnorm(1, mean=4, sd=sqrt(10))
+Y <- runif(1, min=2, max=8)
+
+if(X>Y){
+  
+  P_hat[i] <- 1
+  
+      }
+}
+
+Prob1 <- print(sum(P_hat)/num_sim)
+
+prob1 <- 100*Prob1
+
+```
+This gives an approximation of the probability, `r Prob1`, where we used `num_sim` loops, i.e., the probability of $X>Y$ is `r prob1`%. 
+
+<br>
+
+<!---
+
+
+• Use bootstrapping to derive the sampling distribution for your estimate of Pr(X > Y ).
+• Show how the sample variance of this sampling distribution changes as a function of the number of
+Monte Carlo simulations.
+
+--->
+
+# Bootstrapping the probability
+
+Having now obtained a method to approximate our probability, we will now use the bootstrapping method for approximating the probability for a small sample. We shall perform this as follows: we generate a data frame of length equal to our sample, of size `Size` (which is used in the bootstapping method) which contains random probabilities for $X$ and $Y$. Because we are interested in how the sample variance behaves as we increase the number of loops performed we creat a vector `NRepeat` which contains in each entry increasing number of loops. `L` denotes the maximum number of iterations and it will take steps from 10 to `L` in increments of 10, but this can be changed for either larger or even smaller steps.
+
+The main body of code consists of three for loops and an if statement. The inner-most loop checks our now randomized data set whether $X>Y$, and inserts a '1' into the position of a new vector `S` if this holds. Then we calculate the probability and reset the `S` vector to 0 for the next iteration of the second for loop (so that probabilities do not increase as we iterate). The second loop takes in an entry from `NRepeat` (which contains different number of loops to be performed) and the third and final loop, loops through all the entries in `NRepeat`. In this third loop we calculate the different variances associated with the different number of simulations calculated which are used later for plotting purposes.
+
+
+```{r, echo = TRUE}
+## (Parallelise this using sapply: sapply(x, function))
+
+set.seed(314)
+
+## size of sample (from which bootstrap from)
+Size = 30 
+
+## create vectors of probabilities:
+x <- rnorm(Size, mean=4, sd=sqrt(10))
+y <- runif(Size, min=2, max=8)
+
+## store in data.frame:
+obsData <- data.frame(x, y) 
+
+
+## no. of increasing bootstrapping samples 
+#NRepeat = c(10, 20, 30, 50, 75, 100, 150, 200, 350, 500, 750, 1000) 
+
+## Max nbr of simulations performed
+L=1000
+
+## vector of number of simulations. We calculate for each entry the variance of the 
+## resulting probability vector bootRes.
+NRepeat = seq(10, L, by = 10)
+
+## Column of results (probabilities of each bootstrap iteration)
+bootRes <- matrix(data = 0, nrow = Size, ncol = 1) 
+
+## create vectors for later use
+S <- rep(0, Size)
+VarResults <- c()
+
+
+## Loop across all samples:
+for (h in 1:length(NRepeat)) {
+  
+
+for (i in 1:NRepeat[h]){
+  
+  ## Resample with replacement:
+  bootData <- obsData[sample(x = Size, size = Size, replace = T),]
+  
+  
+  ## calculate the probability associated with this new shuffled data:
+  for (j in 1:nrow(bootData)){
+    
+    if(bootData[j,1] > bootData[j,2]){
+      
+      S[j] <- 1
+      
+    }}
+  
+  
+  ## calculate and store probabilities:
+  bootRes[i] <- (sum(S)/Size)
+  
+  ## reset this vector for the next loop:
+  S <- rep(0, Size) 
+  
+  
+  
+}
+  ## calculate the variance and note how it decreases w.r.t. to nbr. of bootstraps:
+  VarResults[h] <- var((bootRes))   
+} 
+
+```
+
+<!---
+
+
+
+--->
+To investigate the behavior of the sample variance with respect to the number of simulations performed, we have run this code for a variety of loops. For example, in our code we we calculated `r length(NRepeat)` separate loops. We will next investigate how the number of Monte Carlo simulations run can affect the sample variance.
+
+
+
+
+```{r, echo = TRUE}
+
+Data.Var <- data.frame(VarResults, NRepeat, bootRes)
+
+ggplot(Data.Var, aes(x=NRepeat, y=VarResults)) +
+     geom_line() +
+     geom_point()+
+     xlab("Number of simulations performed") +
+     ylab("Sample variance of probabilities (from bootRes)")+
+     ggtitle("Variance plotted against number of Monte Carlo simulations")+
+     geom_hline(yintercept = min(VarResults), color='red', lty='dashed', lwd=1)+
+     geom_hline(yintercept = max(VarResults), color='red', lty='dashed', lwd=1)
+
+
+```
+<br>
+
+From the plot above we can clearly infer how increasing the number of bootstrapping loops performed will result in the decrease of the variance. Note that the code will take quite some time to run through the loops, especially when L (the number of simulations performed) becomes large. We should improve efficiency of the code by utilizing a combination of parallel computing and sapply.
+
+<!---
+Note besides: I tried to increase efficiency but had troubles implementing sapply and parallel computing in the code.
+--->
+
+
+
+
+
+
+
+
+
+<br><br>
+
+## Problem B: Monte Carlo simulation of a football tournament
+
+
+
+<!--- 
+
+
+Problem B
+• Consider the following football tournament format: a team keeps playing until they accrue 7 wins or 3
+losses (whichever comes first - no draws allowed). Assume a fixed win rate p ∈ [0, 1] across all rounds
+(they are paired at random).
+• Plot how the total number of matches played (i.e. wins + losses) varies as a function of p.
+• Comment on the observed win rate relative to the assumed win rate p (i.e. if a team obtains 2 wins -
+3 losses, the maximum likelihood point estimate for their win rate is 40%). Specifically, focus on the
+effect driven by the format of this tournament.
+
+
+--->
+
+The next problem at hand is the Monte Carlo simulation of a hypothetical football tournament. The game is constrained by the following rules: 3 losses or 7 wins (no draws permitted) will result in the termination of the tournament. The goal is to find the expected number of games that will be played as a result of these conditions and where the scoring (winning) probability is fixed. Moreover, we would like to compare how the predicted wins differ to the observed successes.
+
+<!---
+
+Explain how we went about coding this problem:
+
+--->
+
+The basic idea is to translate one competition into a function, then loop this function over $j$ values (the function, Loop(), is a function of $j$). To ensure that each competition has a fixed win rate, we set the seed in the $j^{th}$ iteration a $j$. We then randomly generate a value for the win rate  $p_w\;\in\;(0,\;1)$ giving the lose rate $p_l = 1 - p_w$, and assign these to a vector $x$. Each win and loss rate is placed into the vector 30 times (not randomly distributed) and then we sample this vector (shuffle the probabilities from $x$ into a new vector, `rand`). Then begin a loop which last 9 iterations (number of maximum number of games possible) and check whether in the $i^{th}$ position of `rand` there is a $p_w$ value or a $p_l$ value. If our winning probability is present, another vector, accounting for the games played (`WINorLoss`), receives a 1 in this position of the iteration. If a losing probability is detected, a 0 is placed in the vector at this step. Each time this is performed we must check that the number of 1s and 0s does not exceed 7 or 3, respectively. If it does we break out of the loop.
+
+
+
+
+
+```{r, echo = TRUE}
+## no. of competitions entered :
+N_Repeat <- 200
+
+## for increasing win rate **
+
+
+## For one game:
+
+Loop <- function (j){
+  
+  set.seed(j)
+  
+  WINorLOSS = c()
+  
+  ## fixed prob over all games
+  pw <- runif(n = 1, min = 0, max = 1)  
+  pl <- 1 - pw  
+  
+  ## create vector of two random probabilities: pw or pl
+  r = 50
+  x = rep(c(pw,pl), each= r)
+  
+  
+  ## Randomize probabilities:
+  
+  ## sample our x vector 
+  rand <- sample(x)         
+  
+  Total_game = c()
+  
+## Loop over games played:  
+  
+for (i in 1:9) {
+    
+    if (rand[i] == pw){
+      
+      WINorLOSS <- c(WINorLOSS, 1)
+      
+    } 
+    
+    if (rand[i] == pl){
+      WINorLOSS <- c(WINorLOSS, 0)
+    } 
+    
+## check each loop whether we need to terminate the game (if win = 7 or loss = 3):
+  
+    if (sum(length(WINorLOSS[WINorLOSS == 1])) == 7 | sum(length(WINorLOSS[WINorLOSS == 0])) == 3){
+      
+      Prob_perGame = c()     
+      Prob_perGame <- pw
+      Total_game <- length(WINorLOSS)
+      {break}
+      
+    }
+    
+}
+  
+  z1 <- Total_game
+  
+  z2 <- pw  
+  
+  ## games won:
+  z3 <- z1*z2 
+  
+  ## games lost
+  z4 <- z1 - z3 
+  
+  Z <- data.frame(z1, z2, z3, z4)
+  
+}
+
+## create 4 new vectors:
+
+Tgames = c()
+pWin = c()
+game_won = c()
+game_lost = c()
+
+## Simulate multiple tournaments:
+for (k in 1:N_Repeat) {
+  
+  ## pull out nbr of games:
+  Tgames[k] <- dplyr::pull(Loop(k), z1)  
+  
+  ## pull out win rate:
+  pWin[k] <- dplyr::pull(Loop(k), z2)  
+  
+  ## pull out win count:
+  game_won[k] <- dplyr::pull(Loop(k), z3)  
+  
+  ## pull out loss count:
+  game_lost[k] <- dplyr::pull(Loop(k), z4)  
+  
+} 
+
+## Round to nearest integer:
+game_won <- round(game_won) 
+game_lost <- round(game_lost)
+
+WinRate <- pWin
+
+## Use to compare to the expected win rate pw :
+ObservedWinRate  <- game_won/Tgames
+```
+
+
+To repeat this process such that we simulate multiple tournaments, we loop $j$ `r N_Repeat` times. Each iteration of this particular loop, we extract vectors containing: the total games played, the winning probability associated with this specific tournament, and the games lost and won. We need to ensure that the number of games won/lost are positive integers so we round them. Lastly, we rename them appropriate to use later for plotting purposes.
+
+
+```{r, echo = TRUE, warning=FALSE}
+
+## plot total games against pw (create data frame first):
+
+Data_WT <- data.frame(WinRate, Tgames, game_won)
+
+
+## How do different win rates affect the number of games played:
+
+theme_set(theme_bw())
+ggplot(Data_WT) +
+   geom_col(aes(WinRate, Tgames), width = 0.005, fill ="darkblue")+
+   labs(y="Total games played", 
+        x="Probability of winning (p_w)", 
+        title="Total games against winning probability")
+
+
+```
+
+In the above figure we plot the total games played against the winning probability. Even if we increse the number of competitions entered, `N_Repeat`, the above column chart does not show any trend. We would expect perhaps that as the winning probability increases that the number of games played would increase (since 7 wins are needed to end the game), but we observe no relation.
+
+
+```{r, echo = TRUE, warning=FALSE}
+## Comment on the observed win rate relative to the assumed win rate p:
+
+plot(WinRate, ObservedWinRate, pch = 20)
+
+## diagonal line y = x:
+abline(a=0, b=1, col = "blue", lwd = 2) 
+
+## fitted line:
+abline(lm(WinRate ~ ObservedWinRate), col = "red", lty = 2, lwd = 2) 
+
+```
+
+
+
+
+
+
+In this figure we plotted the observed win rate in each tournament simulated against the randomly generate winning rate $p_w$. There are two additional lines: the blue line represents the diagonal line $y=x$. We would expect that points to follow this line. The other line. plotted in red, represents the actual line that the points follow. Note that it is very close, but not the same as the diagonal, even when the number of simulated tournaments increases.
+
+
+
+Perhaps the reason why we see this is based on the way we set up the rules of the game. Recall the 7 wins, or 3 losses are needed so that the game ends, but no draws are allowed. Introducing another probability, $p_d$ (the likelihood of a draw), could maybe change our results in a way that would be more realistic.
+
+
+<br><br>
+
+
+
+
